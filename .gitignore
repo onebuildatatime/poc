@@ -1,0 +1,7 @@
+target/
+artifacts/
+
+.DS_Store
+.idea/
+.vscode/
+*.iml

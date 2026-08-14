@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: api-test
+  labels:
+    app: api-test
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: api-test
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: test
+          image: curlimages/curl:8.9.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              set -eu
+
+              echo "Creating a message through Spring Boot..."
+              CREATE_RESPONSE="$(curl -fsS \
+                -H 'Content-Type: application/json' \
+                -d '{"message":"Hello Rahul"}' \
+                http://poc-app:8080/messages)"
+              echo "$CREATE_RESPONSE"
+              echo "$CREATE_RESPONSE" | grep '"message":"Hello Rahul"'
+
+              echo "Searching through Spring Boot..."
+              SEARCH_RESPONSE="$(curl -fsS --get \
+                --data-urlencode 'q=Rahul' \
+                http://poc-app:8080/messages/search)"
+              echo "$SEARCH_RESPONSE"
+              echo "$SEARCH_RESPONSE" | grep '"message":"Hello Rahul"'
+
+              echo "Spring Boot API test PASSED!"

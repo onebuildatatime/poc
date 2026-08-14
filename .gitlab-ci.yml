@@ -1,0 +1,53 @@
+stages:
+  - integration-test
+
+variables:
+  OPENSHIFT_CLI_IMAGE: "quay.io/openshift/origin-cli:4.16"
+  ARTIFACT_DIR: "$CI_PROJECT_DIR/artifacts"
+  KEEP_PROJECT: "false"
+
+openshift-elasticsearch-poc:
+  stage: integration-test
+  image:
+    name: "$OPENSHIFT_CLI_IMAGE"
+    entrypoint: [""]
+  resource_group: "openshift-poc-$OPENSHIFT_PROJECT"
+  interruptible: false
+  timeout: 20 minutes
+  before_script:
+    - test -n "$OPENSHIFT_SERVER" || (echo "OPENSHIFT_SERVER is required" && exit 1)
+    - test -n "$OPENSHIFT_TOKEN" || (echo "OPENSHIFT_TOKEN is required" && exit 1)
+    - test -n "$OPENSHIFT_PROJECT" || (echo "OPENSHIFT_PROJECT is required" && exit 1)
+    - oc login "$OPENSHIFT_SERVER" --token="$OPENSHIFT_TOKEN" ${OPENSHIFT_LOGIN_ARGS:-}
+    - oc project "$OPENSHIFT_PROJECT"
+  script:
+    - PROJECT="$OPENSHIFT_PROJECT" ./run-poc.sh
+  after_script:
+    - |
+      if [[ -n "${OPENSHIFT_SERVER:-}" && -n "${OPENSHIFT_TOKEN:-}" && -n "${OPENSHIFT_PROJECT:-}" ]]; then
+        oc login "$OPENSHIFT_SERVER" --token="$OPENSHIFT_TOKEN" ${OPENSHIFT_LOGIN_ARGS:-} >/dev/null 2>&1 || true
+        mkdir -p "$ARTIFACT_DIR"
+        oc get all -n "$OPENSHIFT_PROJECT" -o wide >"$ARTIFACT_DIR/final-resources.txt" 2>&1 || true
+        oc get events -n "$OPENSHIFT_PROJECT" --sort-by=.lastTimestamp >"$ARTIFACT_DIR/final-events.txt" 2>&1 || true
+        oc describe deployment/poc-elasticsearch deployment/poc-app job/api-test \
+          -n "$OPENSHIFT_PROJECT" >"$ARTIFACT_DIR/final-descriptions.txt" 2>&1 || true
+        oc logs deployment/poc-elasticsearch -n "$OPENSHIFT_PROJECT" --all-containers=true \
+          >"$ARTIFACT_DIR/final-elasticsearch.log" 2>&1 || true
+        oc logs deployment/poc-app -n "$OPENSHIFT_PROJECT" --all-containers=true \
+          >"$ARTIFACT_DIR/final-application.log" 2>&1 || true
+        oc logs job/api-test -n "$OPENSHIFT_PROJECT" --all-containers=true \
+          >"$ARTIFACT_DIR/final-api-test.log" 2>&1 || true
+        oc logs buildconfig/poc-app -n "$OPENSHIFT_PROJECT" \
+          >"$ARTIFACT_DIR/final-build.log" 2>&1 || true
+        if [[ "$KEEP_PROJECT" != "true" ]]; then
+          oc delete -f openshift/api-test-job.yaml -f openshift/app.yaml -f openshift/elasticsearch.yaml \
+            -n "$OPENSHIFT_PROJECT" --ignore-not-found=true || true
+          oc delete buildconfig/poc-app imagestream/poc-app \
+            -n "$OPENSHIFT_PROJECT" --ignore-not-found=true || true
+        fi
+      fi
+  artifacts:
+    when: always
+    paths:
+      - artifacts/
+    expire_in: 7 days

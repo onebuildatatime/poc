@@ -1,0 +1,123 @@
+OpenShift Elasticsearch POC - Progress Summary
+==============================================
+
+Goal
+----
+Prove that OpenShift can create and manage temporary integration-test
+dependencies without Docker-in-Docker or Testcontainers in the CI runner.
+
+1. Original Elasticsearch + curl POC
+------------------------------------
+- Deployed a real Elasticsearch 8.15.0 instance in OpenShift.
+- Created a separate curl Job that called http://elasticsearch:9200.
+- Confirmed OpenShift service networking worked.
+- Confirmed the temporary resources could be removed after the test.
+
+2. Java/JUnit + Elasticsearch POC
+---------------------------------
+- Added a Maven and JUnit 5 test project.
+- Added ElasticsearchIT.java.
+- The test creates an index, inserts "Hello Rahul", searches for "Rahul",
+  asserts that the document exists, and deletes the test index.
+- Successfully compiled and ran the JUnit test in a separate OpenShift Job.
+- The direct Elasticsearch integration test remains in the repository at:
+  src/test/java/ElasticsearchIT.java
+
+3. Spring Boot + Elasticsearch system-test POC
+-----------------------------------------------
+- Added a Spring Boot application.
+- Added POST /messages to store a message in Elasticsearch.
+- Added GET /messages/search?q=Rahul to search Elasticsearch.
+- Configured Spring Boot to use:
+  ELASTICSEARCH_URL=http://elasticsearch:9200
+- Added a readiness endpoint through Spring Boot Actuator.
+
+4. Application image build
+--------------------------
+- Added a multi-stage Dockerfile.
+- Added an OpenShift binary Docker build to run-poc.sh.
+- OpenShift creates a BuildConfig and ImageStream, builds the Spring Boot image,
+  and pushes it to the OpenShift internal image registry.
+- Docker-in-Docker is not required on the machine running the orchestration.
+
+5. OpenShift application deployment
+------------------------------------
+- Added openshift/app.yaml.
+- It creates the Spring Boot Deployment and Service.
+- The Spring Boot application communicates with Elasticsearch through the
+  cluster-local Elasticsearch Service.
+
+6. Black-box API test
+---------------------
+- Added openshift/api-test-job.yaml.
+- The separate API test Job calls Spring Boot rather than Elasticsearch directly.
+- It sends POST /messages with "Hello Rahul".
+- It calls GET /messages/search?q=Rahul.
+- It verifies that the API returns "Hello Rahul".
+
+7. Orchestration and cleanup
+----------------------------
+- Updated run-poc.sh to perform the complete lifecycle:
+  1. Select or create an OpenShift project.
+  2. Deploy and wait for Elasticsearch.
+  3. Build the Spring Boot application image in OpenShift.
+  4. Deploy and wait for Spring Boot.
+  5. Run the API test Job.
+  6. Print the test output and diagnostics.
+  7. Clean up temporary resources.
+- If the script created the project, it deletes the project.
+- If the project already existed, it preserves the project and deletes only the
+  POC resources.
+
+8. Issues discovered and fixed
+------------------------------
+- The OpenShift account cannot create or delete projects, so the POC was run in
+  the existing rahularya0083-dev project.
+- Cleanup was made safe for pre-existing projects.
+- Maven was configured to use a writable temporary repository when running under
+  an arbitrary OpenShift user.
+- The Spring Boot Deployment image was injected before creation to avoid a
+  placeholder-image rollout race.
+
+9. Verified result
+------------------
+The complete flow passed:
+
+  API Test Job
+       | HTTP
+       v
+  Spring Boot
+       | HTTP
+       v
+  Elasticsearch
+
+- OpenShift application image build: PASSED
+- Elasticsearch readiness: PASSED
+- Spring Boot readiness: PASSED
+- POST /messages: PASSED
+- Elasticsearch indexing: PASSED
+- GET /messages/search: PASSED
+- Response assertion: PASSED
+- Automatic resource cleanup: PASSED
+- Existing rahularya0083-dev project preserved: PASSED
+
+10. GitLab CI orchestration
+--------------------------
+- Added .gitlab-ci.yml using a configurable OpenShift CLI image.
+- The job logs in with protected CI/CD variables, selects an existing project,
+  and runs the same verified build, deploy, test, and cleanup lifecycle.
+- A resource group serializes pipelines that share the same OpenShift project.
+- Diagnostics and logs are retained as GitLab artifacts for seven days.
+- An idempotent after_script cleanup pass handles interrupted jobs.
+
+Not implemented yet
+-------------------
+- Oracle sandbox integration
+- Helm chart
+- Knative
+- Production authentication, TLS, and persistent storage
+
+Current next milestone
+----------------------
+Configure the GitLab project variables and run the pipeline against the target
+OpenShift project to verify the CI runner's network access and RBAC permissions.
