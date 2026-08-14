@@ -110,6 +110,15 @@ The complete flow passed:
 - Diagnostics and logs are retained as GitLab artifacts for seven days.
 - An idempotent after_script cleanup pass handles interrupted jobs.
 
+11. GitHub Actions orchestration
+--------------------------------
+- Added .github/workflows/openshift-poc.yml for repositories hosted on GitHub.
+- The manually triggered workflow installs oc, authenticates with repository
+  secrets and variables, and runs the proven local lifecycle.
+- Workflow concurrency prevents overlapping runs in the same OpenShift project.
+- Diagnostics are uploaded for seven days, and an always-running final step
+  captures state and performs idempotent cleanup after failures.
+
 Not implemented yet
 -------------------
 - Oracle sandbox integration
@@ -119,5 +128,5 @@ Not implemented yet
 
 Current next milestone
 ----------------------
-Configure the GitLab project variables and run the pipeline against the target
-OpenShift project to verify the CI runner's network access and RBAC permissions.
+Configure the GitHub repository secret and variables, merge the workflow into
+the default branch, and run it to verify runner network access and RBAC.
