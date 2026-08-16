@@ -1,0 +1,113 @@
+name: OpenShift Elasticsearch POC
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_resources:
+        description: Keep OpenShift resources after the run for inspection
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openshift-poc-${{ vars.OPENSHIFT_PROJECT }}
+  cancel-in-progress: false
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENSHIFT_SERVER: ${{ vars.OPENSHIFT_SERVER }}
+      OPENSHIFT_PROJECT: ${{ vars.OPENSHIFT_PROJECT }}
+      PROJECT: ${{ vars.OPENSHIFT_PROJECT }}
+      ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+      KEEP_PROJECT: ${{ inputs.keep_resources }}
+      KUBECONFIG: ${{ runner.temp }}/openshift-kubeconfig
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate OpenShift configuration
+        shell: bash
+        env:
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$OPENSHIFT_SERVER" ]] || { echo "::error::Repository variable OPENSHIFT_SERVER is required"; exit 1; }
+          [[ -n "$OPENSHIFT_PROJECT" ]] || { echo "::error::Repository variable OPENSHIFT_PROJECT is required"; exit 1; }
+          [[ -n "$OPENSHIFT_TOKEN" ]] || { echo "::error::Repository secret OPENSHIFT_TOKEN is required"; exit 1; }
+
+      - name: Install OpenShift CLI
+        uses: redhat-actions/openshift-tools-installer@v1
+        with:
+          oc: "4.16"
+
+      - name: Log in to OpenShift
+        shell: bash
+        env:
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+          OPENSHIFT_INSECURE_SKIP_TLS_VERIFY: ${{ vars.OPENSHIFT_INSECURE_SKIP_TLS_VERIFY }}
+        run: |
+          set -Eeuo pipefail
+          login_args=()
+          if [[ "$OPENSHIFT_INSECURE_SKIP_TLS_VERIFY" == "true" ]]; then
+            login_args+=(--insecure-skip-tls-verify=true)
+          fi
+          oc login "$OPENSHIFT_SERVER" --token="$OPENSHIFT_TOKEN" "${login_args[@]}"
+          oc project "$OPENSHIFT_PROJECT"
+          oc whoami
+
+      - name: Build, deploy, and test
+        shell: bash
+        run: ./run-poc.sh
+
+      - name: Capture final diagnostics and clean up
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$ARTIFACT_DIR"
+
+          if ! oc whoami >/dev/null 2>&1; then
+            echo "No active OpenShift session; skipping final diagnostics and cleanup."
+            exit 0
+          fi
+
+          oc get all -n "$OPENSHIFT_PROJECT" -o wide >"$ARTIFACT_DIR/final-resources.txt" 2>&1
+          oc get events -n "$OPENSHIFT_PROJECT" --sort-by=.lastTimestamp >"$ARTIFACT_DIR/final-events.txt" 2>&1
+          oc describe deployment/poc-elasticsearch deployment/poc-app job/api-test \
+            -n "$OPENSHIFT_PROJECT" >"$ARTIFACT_DIR/final-descriptions.txt" 2>&1
+          oc logs deployment/poc-elasticsearch -n "$OPENSHIFT_PROJECT" --all-containers=true \
+            >"$ARTIFACT_DIR/final-elasticsearch.log" 2>&1
+          oc logs deployment/poc-app -n "$OPENSHIFT_PROJECT" --all-containers=true \
+            >"$ARTIFACT_DIR/final-application.log" 2>&1
+          oc logs job/api-test -n "$OPENSHIFT_PROJECT" --all-containers=true \
+            >"$ARTIFACT_DIR/final-api-test.log" 2>&1
+          oc logs buildconfig/poc-app -n "$OPENSHIFT_PROJECT" \
+            >"$ARTIFACT_DIR/final-build.log" 2>&1
+
+          if [[ "$KEEP_PROJECT" != "true" ]]; then
+            oc delete -f openshift/api-test-job.yaml -f openshift/app.yaml -f openshift/elasticsearch.yaml \
+              -n "$OPENSHIFT_PROJECT" --ignore-not-found=true
+            oc delete buildconfig/poc-app imagestream/poc-app \
+              -n "$OPENSHIFT_PROJECT" --ignore-not-found=true
+          fi
+
+      - name: Remove local OpenShift credentials
+        if: always()
+        shell: bash
+        run: rm -f "$KUBECONFIG"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openshift-diagnostics-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 7

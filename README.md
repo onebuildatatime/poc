@@ -66,6 +66,19 @@ PROJECT=my-existing-project ./run-poc.sh
 
 When the project already exists, the script preserves the project and removes only the POC resources. `KEEP_PROJECT=true` preserves both the project and its POC resources for inspection.
 
+## Run from GitHub Actions
+
+The included `.github/workflows/openshift-poc.yml` runs the full lifecycle manually from GitHub Actions. Configure the repository under **Settings → Secrets and variables → Actions**:
+
+- Add the repository secret `OPENSHIFT_TOKEN` containing the OpenShift service-account token.
+- Add the repository variable `OPENSHIFT_SERVER` containing the OpenShift API URL.
+- Add the repository variable `OPENSHIFT_PROJECT` containing the existing OpenShift project name.
+- If the cluster uses a certificate the runner cannot verify, optionally add `OPENSHIFT_INSECURE_SKIP_TLS_VERIFY` with the value `true`. Trusting the cluster CA is preferable.
+
+After the workflow is present on the default branch, open **Actions → OpenShift Elasticsearch POC → Run workflow**. The optional `keep_resources` input preserves the resources for inspection; it defaults to `false` so cleanup occurs automatically.
+
+The workflow serializes runs targeting the configured project, retains diagnostics for seven days, and performs an idempotent final cleanup even when the main test step fails. The GitHub runner must be able to reach the OpenShift API.
+
 ## Run from GitLab CI
 
 The included `.gitlab-ci.yml` runs the same lifecycle with the OpenShift CLI. Add these masked or protected CI/CD variables in GitLab:
@@ -109,6 +122,8 @@ oc delete project test-poc
 - `openshift/api-test-job.yaml` creates the black-box API test job.
 - `src/test/java/ElasticsearchIT.java` retains the direct JUnit/Elasticsearch test from the previous milestone.
 - `run-poc.sh` simulates the future CI lifecycle from a laptop.
+- `.github/workflows/openshift-poc.yml` runs the lifecycle from GitHub Actions.
+- `.gitlab-ci.yml` runs the lifecycle from GitLab CI.
 
 ## Troubleshooting
 
