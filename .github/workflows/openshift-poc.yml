@@ -26,7 +26,7 @@ jobs:
       PROJECT: ${{ vars.OPENSHIFT_PROJECT }}
       ARTIFACT_DIR: ${{ github.workspace }}/artifacts
       KEEP_PROJECT: ${{ inputs.keep_resources }}
-      KUBECONFIG: ${{ runner.temp }}/openshift-kubeconfig
+      KUBECONFIG: ${{ github.workspace }}/openshift-kubeconfig
 
     steps:
       - name: Check out repository
