@@ -2,11 +2,13 @@ package com.example.poc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -18,9 +20,19 @@ public class DataService {
 
     public DataService(
             RestClient.Builder restClientBuilder,
-            @Value("${elasticsearch.url}") String elasticsearchUrl
+            @Value("${elasticsearch.url}") String elasticsearchUrl,
+            @Value("${elasticsearch.username:}") String username,
+            @Value("${elasticsearch.password:}") String password
     ) {
-        this.elasticsearch = restClientBuilder.baseUrl(elasticsearchUrl).build();
+        // Build RestClient with optional Basic Auth for Elasticsearch security
+        var builder = restClientBuilder.baseUrl(elasticsearchUrl);
+
+        if (username != null && !username.isEmpty() && password != null && !password.isEmpty()) {
+            String credentials = Base64.getEncoder().encodeToString((username + ":" + password).getBytes());
+            builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Basic " + credentials);
+        }
+
+        this.elasticsearch = builder.build();
     }
 
     public SeedDataResponse seedData(List<String> items) {

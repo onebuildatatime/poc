@@ -1,0 +1,160 @@
+# Office-environment Elasticsearch with security, persistent storage, and increased resources
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-credentials
+type: Opaque
+stringData:
+  username: elastic
+  password: "ChangeMeToSecurePassword123!"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard  # Use your office cluster's storage class
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: poc-elasticsearch
+  labels:
+    app: poc-elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: poc-elasticsearch
+  template:
+    metadata:
+      labels:
+        app: poc-elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1000  # Elasticsearch UID
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+          imagePullPolicy: IfNotPresent
+          env:
+            # Single node for PoC, but enable security
+            - name: discovery.type
+              value: single-node
+            # Security Configuration
+            - name: xpack.security.enabled
+              value: "true"
+            - name: xpack.security.enrollment.enabled
+              value: "true"
+            # Use credentials from secret
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-credentials
+                  key: password
+            # TLS Configuration (basic - generates self-signed)
+            - name: xpack.security.http.ssl.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.key
+              value: /usr/share/elasticsearch/config/certs/server.key
+            - name: xpack.security.http.ssl.certificate
+              value: /usr/share/elasticsearch/config/certs/server.crt
+            - name: xpack.security.http.ssl.certificate_authorities
+              value: /usr/share/elasticsearch/config/certs/ca.crt
+            # Increased JVM heap for production workload
+            - name: ES_JAVA_OPTS
+              value: "-Xms2g -Xmx2g"
+          ports:
+            - name: http
+              containerPort: 9200
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+            - name: elasticsearch-certs
+              mountPath: /usr/share/elasticsearch/config/certs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Increased resources for office environment
+          resources:
+            requests:
+              memory: 4Gi
+              cpu: "1"
+            limits:
+              memory: 8Gi
+              cpu: "2"
+      volumes:
+        - name: elasticsearch-data
+          persistentVolumeClaim:
+            claimName: elasticsearch-data-pvc
+        # Self-signed certs (in production, use proper certificates)
+        - name: elasticsearch-certs
+          secret:
+            secretName: elasticsearch-certs
+            optional: true  # Will still start without certs initially
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  labels:
+    app: poc-elasticsearch
+spec:
+  selector:
+    app: poc-elasticsearch
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+      protocol: TCP
+
+---
+# Optional: Service Monitor for Prometheus monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: elasticsearch-monitor
+  labels:
+    app: poc-elasticsearch
+spec:
+  selector:
+    matchLabels:
+      app: poc-elasticsearch
+  endpoints:
+    - port: http
+      interval: 30s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
+      basicAuth:
+        username:
+          name: elasticsearch-credentials
+          key: username
+        password:
+          name: elasticsearch-credentials
+          key: password
