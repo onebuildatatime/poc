@@ -64,10 +64,11 @@ dependencies without Docker-in-Docker or Testcontainers in the CI runner.
   4. Deploy and wait for Spring Boot.
   5. Run the API test Job.
   6. Print the test output and diagnostics.
-  7. Clean up temporary resources.
-- If the script created the project, it deletes the project.
-- If the project already existed, it preserves the project and deletes only the
-  POC resources.
+  7. Capture diagnostics and clean up according to the selected lifecycle.
+- With KEEP_PROJECT=true, it retains Elasticsearch, the application, services,
+  BuildConfig, and ImageStream, and removes only the temporary API test Job.
+- With KEEP_PROJECT=false, it deletes a project created by the script or removes
+  all POC resources from a pre-existing project.
 
 8. Issues discovered and fixed
 ------------------------------
@@ -98,7 +99,8 @@ The complete flow passed:
 - Elasticsearch indexing: PASSED
 - GET /messages/search: PASSED
 - Response assertion: PASSED
-- Automatic resource cleanup: PASSED
+- Temporary API test Job cleanup: PASSED
+- Persistent application and build resource retention: PASSED
 - Existing rahularya0083-dev project preserved: PASSED
 
 10. GitLab CI orchestration
@@ -108,7 +110,10 @@ The complete flow passed:
   and runs the same verified build, deploy, test, and cleanup lifecycle.
 - A resource group serializes pipelines that share the same OpenShift project.
 - Diagnostics and logs are retained as GitLab artifacts for seven days.
-- An idempotent after_script cleanup pass handles interrupted jobs.
+- Deployed and build resources are retained by default, while the temporary API
+  test Job is always removed after its logs are captured.
+- An idempotent after_script cleanup pass handles interrupted jobs; setting
+  KEEP_PROJECT=false performs a full POC teardown.
 
 11. GitHub Actions orchestration
 --------------------------------
@@ -118,6 +123,8 @@ The complete flow passed:
 - Workflow concurrency prevents overlapping runs in the same OpenShift project.
 - Diagnostics are uploaded for seven days, and an always-running final step
   captures state and performs idempotent cleanup after failures.
+- The workflow retains deployed and build resources by default and always removes
+  the temporary API test Job after diagnostics are captured.
 
 Not implemented yet
 -------------------
@@ -128,5 +135,5 @@ Not implemented yet
 
 Current next milestone
 ----------------------
-Configure the GitHub repository secret and variables, merge the workflow into
-the default branch, and run it to verify runner network access and RBAC.
+Publish and run the persistent-resource lifecycle update, then decide whether to
+trigger the integration workflow on pull requests, pushes, or a schedule.

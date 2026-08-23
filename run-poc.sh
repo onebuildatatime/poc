@@ -33,7 +33,9 @@ collect_artifacts() {
 
 cleanup() {
     if [[ "$KEEP_PROJECT" == "true" ]]; then
-        echo "KEEP_PROJECT=true, leaving project '$PROJECT' in place."
+        echo "Cleaning up temporary API test job from project '$PROJECT'..."
+        oc delete job/api-test -n "$PROJECT" --ignore-not-found=true
+        echo "KEEP_PROJECT=true, leaving Elasticsearch, the application, and build resources in place."
         return
     fi
 

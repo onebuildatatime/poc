@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       keep_resources:
-        description: Keep OpenShift resources after the run for inspection
+        description: Keep Elasticsearch, application, and build resources; always remove the API test Job
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -91,8 +91,10 @@ jobs:
           oc logs buildconfig/poc-app -n "$OPENSHIFT_PROJECT" \
             >"$ARTIFACT_DIR/final-build.log" 2>&1
 
+          oc delete job/api-test -n "$OPENSHIFT_PROJECT" --ignore-not-found=true
+
           if [[ "$KEEP_PROJECT" != "true" ]]; then
-            oc delete -f openshift/api-test-job.yaml -f openshift/app.yaml -f openshift/elasticsearch.yaml \
+            oc delete -f openshift/app.yaml -f openshift/elasticsearch.yaml \
               -n "$OPENSHIFT_PROJECT" --ignore-not-found=true
             oc delete buildconfig/poc-app imagestream/poc-app \
               -n "$OPENSHIFT_PROJECT" --ignore-not-found=true
