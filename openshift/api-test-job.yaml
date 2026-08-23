@@ -23,6 +23,7 @@ spec:
             - |
               set -eu
 
+              echo "=== Testing Message Service ==="
               echo "Creating a message through Spring Boot..."
               CREATE_RESPONSE="$(curl -fsS \
                 -H 'Content-Type: application/json' \
@@ -38,4 +39,21 @@ spec:
               echo "$SEARCH_RESPONSE"
               echo "$SEARCH_RESPONSE" | grep '"message":"Hello Rahul"'
 
-              echo "Spring Boot API test PASSED!"
+              echo ""
+              echo "=== Testing Data Service ==="
+              echo "Seeding sample data to Elasticsearch..."
+              SEED_RESPONSE="$(curl -fsS \
+                -H 'Content-Type: application/json' \
+                -d '{"items":["POC Item 1","POC Item 2","POC Item 3"]}' \
+                http://poc-app:8080/data/seed)"
+              echo "$SEED_RESPONSE"
+              echo "$SEED_RESPONSE" | grep '"inserted":3'
+
+              echo "Getting data count..."
+              COUNT_RESPONSE="$(curl -fsS \
+                http://poc-app:8080/data/count)"
+              echo "$COUNT_RESPONSE"
+              echo "$COUNT_RESPONSE" | grep '"count"'
+
+              echo ""
+              echo "✅ Spring Boot API test PASSED!"
