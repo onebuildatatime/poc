@@ -52,7 +52,7 @@ To use a different project name:
 PROJECT=test-poc-123 ./run-poc.sh
 ```
 
-To keep the project around for inspection after the run:
+To keep Elasticsearch, the application, and the OpenShift build resources after the run:
 
 ```bash
 KEEP_PROJECT=true ./run-poc.sh
@@ -64,7 +64,7 @@ If your account cannot create projects, use an existing project:
 PROJECT=my-existing-project ./run-poc.sh
 ```
 
-When the project already exists, the script preserves the project and removes only the POC resources. `KEEP_PROJECT=true` preserves both the project and its POC resources for inspection.
+When the project already exists, the script preserves the project. `KEEP_PROJECT=true` retains Elasticsearch, the application, services, BuildConfig, and ImageStream, but always removes the temporary API test Job after capturing its logs. `KEEP_PROJECT=false` removes all POC resources after the test.
 
 ## Run from GitHub Actions
 
@@ -75,9 +75,9 @@ The included `.github/workflows/openshift-poc.yml` runs the full lifecycle manua
 - Add the repository variable `OPENSHIFT_PROJECT` containing the existing OpenShift project name.
 - If the cluster uses a certificate the runner cannot verify, optionally add `OPENSHIFT_INSECURE_SKIP_TLS_VERIFY` with the value `true`. Trusting the cluster CA is preferable.
 
-After the workflow is present on the default branch, open **Actions → OpenShift Elasticsearch POC → Run workflow**. The optional `keep_resources` input preserves the resources for inspection; it defaults to `false` so cleanup occurs automatically.
+After the workflow is present on the default branch, open **Actions → OpenShift Elasticsearch POC → Run workflow**. The `keep_resources` input defaults to `true`, retaining Elasticsearch, the application, services, BuildConfig, and ImageStream for later pipeline runs. The temporary API test Job is always removed after its logs are captured. Select `false` only when a full POC teardown is required.
 
-The workflow serializes runs targeting the configured project, retains diagnostics for seven days, and performs an idempotent final cleanup even when the main test step fails. The GitHub runner must be able to reach the OpenShift API.
+The workflow serializes runs targeting the configured project, retains diagnostics for seven days, and performs idempotent cleanup even when the main test step fails. The GitHub runner must be able to reach the OpenShift API.
 
 ## Run from GitLab CI
 
@@ -89,7 +89,7 @@ The included `.gitlab-ci.yml` runs the same lifecycle with the OpenShift CLI. Ad
 
 If the cluster uses a private CA, set `OPENSHIFT_LOGIN_ARGS` to `--insecure-skip-tls-verify=true`, or preferably configure the runner to trust the cluster CA. Override `OPENSHIFT_CLI_IMAGE` when the cluster requires a different compatible `oc` version.
 
-The job is serialized per OpenShift project to prevent concurrent pipelines from overwriting its fixed resource names. It always uploads resource state, events, build logs, application logs, Elasticsearch logs, and API-test logs as GitLab artifacts, and its `after_script` performs a second idempotent cleanup pass in case the main script is interrupted.
+The job is serialized per OpenShift project to prevent concurrent pipelines from overwriting its fixed resource names. It retains the deployed and build resources by default, always removes the temporary API test Job after capturing its logs, and supports a full teardown with `KEEP_PROJECT=false`. It uploads resource state, events, build logs, application logs, Elasticsearch logs, and API-test logs as GitLab artifacts, and its `after_script` performs a second idempotent cleanup pass in case the main script is interrupted.
 
 ## Test flow
 

@@ -4,7 +4,7 @@ stages:
 variables:
   OPENSHIFT_CLI_IMAGE: "quay.io/openshift/origin-cli:4.16"
   ARTIFACT_DIR: "$CI_PROJECT_DIR/artifacts"
-  KEEP_PROJECT: "false"
+  KEEP_PROJECT: "true"
 
 openshift-elasticsearch-poc:
   stage: integration-test
@@ -39,8 +39,9 @@ openshift-elasticsearch-poc:
           >"$ARTIFACT_DIR/final-api-test.log" 2>&1 || true
         oc logs buildconfig/poc-app -n "$OPENSHIFT_PROJECT" \
           >"$ARTIFACT_DIR/final-build.log" 2>&1 || true
+        oc delete job/api-test -n "$OPENSHIFT_PROJECT" --ignore-not-found=true || true
         if [[ "$KEEP_PROJECT" != "true" ]]; then
-          oc delete -f openshift/api-test-job.yaml -f openshift/app.yaml -f openshift/elasticsearch.yaml \
+          oc delete -f openshift/app.yaml -f openshift/elasticsearch.yaml \
             -n "$OPENSHIFT_PROJECT" --ignore-not-found=true || true
           oc delete buildconfig/poc-app imagestream/poc-app \
             -n "$OPENSHIFT_PROJECT" --ignore-not-found=true || true
