@@ -1,9 +1,11 @@
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,14 +20,24 @@ class ElasticsearchIT {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
+    private boolean elasticsearchAvailable;
 
     @AfterEach
     void deleteIndex() throws Exception {
-        send("DELETE", "/" + INDEX_NAME, null, 200, 404);
+        if (elasticsearchAvailable) {
+            send("DELETE", "/" + INDEX_NAME, null, 200, 404);
+        }
     }
 
     @Test
     void indexesAndSearchesForRahul() throws Exception {
+        // Check if Elasticsearch is available
+        try {
+            send("GET", "/", null, 200);
+            elasticsearchAvailable = true;
+        } catch (ConnectException e) {
+            Assumptions.abort("Elasticsearch not available at " + ELASTICSEARCH_URL + ". Skipping integration test.");
+        }
         send("DELETE", "/" + INDEX_NAME, null, 200, 404);
         send("PUT", "/" + INDEX_NAME, "{}", 200);
         send(
